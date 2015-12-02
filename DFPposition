@@ -1,0 +1,119 @@
+function [ positionvex,positionvey,residualerror ] = DFPposition( psfmatrix,psfbase,Errorbound )
+%This function is a main function for Davidon Fletcher Powell optimization
+%algorithm for 
+%   This function relies on a one-dimension search function( Wolfe search )
+%INPUT: Errorbound is error bound for iteration (stop condition)
+%INPUT: psfmatrix is the psf U used to estimate the position of stars
+%INPUT: psfbase is the psfbase for estimation of psf position(from
+%psfpcadecon)
+
+%OUTPUT: positionvec is the final position after shift
+%OUTPUT: residualerror is the residual error after we get the real position
+
+%% Step 0: Check the input parameter
+if nargin <= 2
+    %Default errorbound
+    Errorbound=0.01;
+end
+
+
+%% Step I: We get the inital value
+%Minimal step size
+lambda=0.0001;
+%Initial position in x direction 
+inix=0;
+%Initial position in y direction
+iniy=0;
+%The initial position vector
+inip=[inix iniy]';
+%Initial function value of this vector
+finip=psfshiftpos(psfmatrix,inix,iniy,psfbase);
+%Initial gradient vector
+%In x direction
+finideltax=(psfshiftpos(psfmatrix,inix+lambda,iniy,psfbase)-psfshiftpos...
+    (psfmatrix,inix-lambda,iniy,psfbase))/2/lambda;
+%In y direction
+finideltay=(psfshiftpos(psfmatrix,inix,iniy+lambda,psfbase)-psfshiftpos...
+    (psfmatrix,inix,iniy-lambda,psfbase))/2/lambda;
+%Overall gradient vector
+finidelta=[finideltax finideltay]';
+%Initial A0 (transform matrix)
+A0=eye(size(inip,2));
+%Initial gradient step vector 
+step0=-A0*finidelta;
+%We use one-dimensional Wolfe search method to get results
+alpha=wolfe(inip,step0,0.1,0.5,psfbase,psfmatrix);
+if alpha~=0
+    %x2 aka the second value (x2 for the change value)
+    secp=inip+alpha*step0;
+    %Set the inital error value
+    Error=finip;
+    %last error is used for check whether this function is going down.
+    LastError=Error;
+
+    %% Step II: Iteration to get the final results
+    while Error>Errorbound || LastError>Error
+        %Position change value here
+        deltap=secp-inip; 
+        %Gradient of these values in this(second) step
+        %Position in x direction
+        secpx=secp(1);
+        %Position in y direction
+        secpy=secp(2);
+        %In x direction
+        fsecdeltax=(psfshiftpos(psfmatrix,secpx+lambda,secpy,psfbase)-psfshiftpos...
+            (psfmatrix,secpx-lambda,secpy,psfbase))/2/lambda;
+        %In y direction
+        fsecdeltay=(psfshiftpos(psfmatrix,secpx,secpy+lambda,psfbase)-psfshiftpos...
+            (psfmatrix,secpx,secpy-lambda,psfbase))/2/lambda;
+        %Overall gradient vector
+        fsecdelta=[fsecdeltax fsecdeltay]';
+        %Second-order of gradient aka gn here for us
+        gdelta=fsecdelta-finidelta;
+        if min(gdelta)<10^(-6)
+            residualerror=abs(Error);
+            positionvex=secp(1);
+            positionvey=secp(2);
+            return
+        end
+        %We update the An matrix (aka An is used to update the gradient vector)
+        Asec=A0+deltap*deltap'/(gdelta'*deltap)-(A0*gdelta)*gdelta'*A0/(gdelta'*A0*gdelta);
+        %We update gradient vector with right now value
+        steps=-Asec*fsecdelta;
+        %One dimensional Wolfe search method - find step value
+        alphas=wolfe(secp,steps,0.1,0.5,psfbase,psfmatrix);
+        if alphas~=0
+            %We update position vector with this value
+            inip=secp;
+            secp=secp+alphas*steps;
+            %Remember last error for us to check the results
+            LastError=Error;
+            %Evaluate function value in this point
+            Error=abs(psfshiftpos(psfmatrix,secpx,secpy,psfbase));
+            
+            %We reset all these values here (project from secondary to initial)
+            finidelta=fsecdelta;
+            residualerror=abs(Error);
+            positionvex=secp(1);
+            positionvey=secp(2);
+        else
+            residualerror=1;
+            positionvex=0;
+            positionvey=0;
+            return
+        end
+    end
+else
+    residualerror=1;
+    positionvex=0;
+    positionvey=0;
+    
+end
+residualerror=Error;
+positionvex=0;
+positionvey=0;
+    
+
+
+end
+
