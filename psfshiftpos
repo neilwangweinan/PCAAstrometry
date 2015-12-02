@@ -1,0 +1,51 @@
+function [ residualerror ] = psfshiftpos( orgpsf,deltax,deltay,psfmatrix )
+%This function is used to estimate residual error after the orginal psf
+%shift deltax and deltay
+%   It is based on the PCA astrometry function and used to estimate
+%   residual error after orgpsf shift deltax and deltay
+%INPUT: orgpsf is the original psf that are used to estimate its position
+%INPUT: deltax and deltay are the position of the psf in each coordinates.
+%INPUT: psfmatrix is the psf base matrix that will be used to estimate pos
+%OUTPUT: residualerror is the residual error after we use this method to
+%fit
+%% Step 0: Error check: whether the shift is physical possible
+if abs(deltax)>1.2 || abs(deltay)>1.2
+    %When this error happens, a 
+    residualerror=1;
+    %error('Wrong shift, only subpixel shift is possible and delta is %f %f',deltax,deltay);
+
+else
+    %% Step I: Interpolation of PSF with mentioned deltax and deltay
+    %Get the size of the psf
+    [psfw,psfl]=size(orgpsf);
+    %newpsf is the shifted psf <along x and y direction with deltax and deltay>
+    newpsf=zeros(psfw,psfl);
+    %Get the value of this new psf (with shift from 2 to end-1) ~ Linear Inter.
+    for indx=2:psfw-1
+        for indy=2:psfl-1
+            newpsf(indx,indy)=orgpsf(indx,indy)*(1-abs(deltax))*(1-abs(deltay))...
+                +orgpsf(indx+sign(deltax),indy)*abs(deltax)*(1-abs(deltay))...
+                +orgpsf(indx,indy+sign(deltay))*abs(deltay)*(1-abs(deltax))...
+                +orgpsf(indx+sign(deltax),indy+sign(deltay))*abs(deltax)*abs(deltay);
+        end
+    end
+    %reshape this newpsf to cut the boundary value
+    newpsf=newpsf(2:end-1,2:end-1);
+    
+    %% Step II: Get the value of each components
+    [~,~,page]=size(psfmatrix);
+    %Value of these components
+    pcom=zeros(1,page);
+    %Constructed psf from components
+    conpsf=zeros(size(newpsf));
+    %Iteration to get these components
+    for indz=1:page
+        pcom(indz)=sum(sum(newpsf.*psfmatrix(2:end-1,2:end-1,indz)));
+        conpsf=conpsf+pcom(indz)*psfmatrix(2:end-1,2:end-1,indz);
+    end
+    %% Step III: Compute residual between constructed psf and orgpsf
+    residualerror=max(max(abs(conpsf-newpsf)));
+end
+
+end
+
