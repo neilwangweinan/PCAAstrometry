@@ -1,0 +1,112 @@
+function [ alpha,xk1 ] = wolfe( xk,pk,mu,sigma,psfmatrix,orgpsf )
+%This is one-dimensional wolfe search method (1-d nonexact search method)
+%   This search method will return step-size with a given start point and
+%   direction (along with other parameter: mu and sigma)
+%INPUT: xk is point value right now (a vector)
+%INPUT: pk is the direction vector (need to use this search step size)
+%INPUT: mu is a parameter used to keep super-linear property in [0, 1/2]
+%INPUT: sigma is a parameter to keep value in [mu, 1]
+%INPUT: psfmatrix is matrix of psf that came from PCA decomposition
+%INPUT: orgpsf is the original psf that used to estimate its position
+%This function is related to the function psfshiftpos ( used to calculate
+%the value of function )
+%% Check the input parameters here
+if nargin <=2;
+    %Default mu
+    mu=0.1;
+    %Default sigma value
+    sigma=0.5;
+end
+%% Step I: we get the initial value for the first value
+%Set initial values here
+%a is the starting point
+a=0;
+%b is the end point
+b=inf;
+%alpha is used as initial step-size
+alpha=1;
+%Iterflag
+iter=0;
+%Minimal step size
+lambda=0.0001;
+%Values in first iteration
+%xk1 is x(k+1) of the wolfe value <position value in x and y direction>
+xk1=(xk+alpha*pk)';
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Value of this function in this point (xk1)
+%fk1 is f(x(k+1)) during iteration
+fk1=psfshiftpos(orgpsf,xk1(1),xk1(2),psfmatrix);
+%gk1 is g(x(k+1)) during iteration
+%x direction divergence of gk1 <aka. divergence x>
+gk1x=(psfshiftpos(orgpsf,xk1(1)+lambda,xk1(2),psfmatrix)-psfshiftpos(orgpsf,...
+    xk1(1)-lambda,xk1(2),psfmatrix))/2/lambda;
+%y direction divergence of gk1 <aka. divergence y>
+gk1y=(psfshiftpos(orgpsf,xk1(1),xk1(2)+lambda,psfmatrix)-psfshiftpos(orgpsf,...
+    xk1(1),xk1(2)-lambda,psfmatrix))/2/lambda;
+%divernce of fk1
+gk1=[gk1x,gk1y];
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Value of this function in this function (xk)
+%fk is f(x(k)) during iteration
+fk=psfshiftpos(orgpsf,xk(1),xk(2),psfmatrix);
+%gk1 is g(x(k+1)) during iteration
+%x direction divergence of gk1 <aka. divergence x>
+gkx=(psfshiftpos(orgpsf,xk(1)+lambda,xk(2),psfmatrix)-psfshiftpos(orgpsf,...
+    xk(1)-lambda,xk(2),psfmatrix))/2/lambda;
+%y direction divergence of gk1 <aka. divergence y>
+gky=(psfshiftpos(orgpsf,xk(1),xk(2)+lambda,psfmatrix)-psfshiftpos(orgpsf,...
+    xk(1),xk(2)-lambda,psfmatrix))/2/lambda;
+%divernce of fk1
+gk=[gkx,gky];
+%% Step II: we begin our iteration to get necessary values
+%Check whether Armijo Goldstein rule I is accepted
+while fk-fk1<(-mu*alpha*gk*pk)
+    %Add iteration times
+    iter=iter+1;
+    %Change the inital value and last value with 2nd interpolation method
+    b=alpha;
+    alpha=0.5*(alpha+a);
+    %We get a new estimate with this new value
+    xk1=xk+alpha*pk;
+    fk1=psfshiftpos(orgpsf,xk1(1),xk1(2),psfmatrix);
+    %Used to get away from unsatisfied value
+    if iter>1000;
+        break
+    end
+end
+
+%Check whether Wolfe-Powell Rule II is accepted
+while gk1*pk<sigma*gk*pk
+    %Add iteration times
+    iter=iter+1;
+    %Also we change inital value and last value with 2nd interpolation
+    %method
+    a=alpha;
+    alpha=min([2*alpha 0.5*(a+b)]);
+    %We also could get new estimate with this new value
+    xk1=xk+alpha*pk;
+    %gk1 is g(x(k+1)) during iteration
+    %x direction divergence of gk1 <aka. divergence x>
+    gk1x=(psfshiftpos(orgpsf,xk1(1)+lambda,xk1(2),psfmatrix)-psfshiftpos(orgpsf,...
+    xk1(1)-lambda,xk1(2),psfmatrix))/2/lambda;
+    %y direction divergence of gk1 <aka. divergence y>
+    gk1y=(psfshiftpos(orgpsf,xk1(1),xk1(2)+lambda,psfmatrix)-psfshiftpos(orgpsf,...
+    xk1(1),xk1(2)-lambda,psfmatrix))/2/lambda;
+    %divernce of fk1
+    gk1=[gk1x,gk1y];
+    %Used to get away from unsatisfied value
+    if iter>2000
+        break
+    end
+end
+
+%Set the unnecessary value to not useful...
+if iter>2000
+    alpha=0;
+end
+%New components is obtained // Actually only step size is our requirements
+%and new components mentioned below are not always required
+xk1=xk+alpha*pk;
+
+end
+
