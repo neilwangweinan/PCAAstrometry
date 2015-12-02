@@ -1,0 +1,129 @@
+% This is a new pca astrometry method which uses LS to get position of
+% debris instead of direct position get method
+close all
+clear all
+clc
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%   Definitation of the folder to store the fits and position files
+% Read all the fits files into memory with MATLAB
+% Strings listed below is the dir of this current filefolder
+curfolder = 'C:\Users\jiapeng\Documents\MATLAB\PCAForAstrometry\DataProc\data\7803\20120315_7803_105984_2';
+fitsfiles = dir(fullfile(curfolder,'*.fit'));
+% The data structure is name
+%                       date
+%                       bytes
+%                       isdir
+%                       datenum
+% Strings listed below is the dir of the position information 
+postr = 'C:\Users\jiapeng\Documents\MATLAB\PCAForAstrometry\DataProc\data\sat\7803\20120315_7803_105984_2.txt';
+fid = fopen(postr);
+% Read the position of these aims 
+pos=fscanf(fid,'%f %f',[2,inf]);
+fclose(fid);
+%Check the size of position matrix and number of fits files
+if(size(fitsfiles,1)~=size(pos,2))
+    error('The number of fitsfiles and position information is different');
+else
+    totalfign=size(fitsfiles,1);
+end
+%%%%%%%%%%%%End of this part%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%Basic definition of PCA window size%%%%%%%%%%%%%%%%
+%Using psfobtain function to get different psfs
+%psf windowsize <half window> This window is 2 pixel bigger than the psf of
+%debris (in both positive and negative directions)
+
+%5*5 pixels wide may be a good choice according to Sun (So we use window
+%with 2 pixels larger than that of the original image -> 7*7 pixels
+windowsize=4; 
+
+%error window size is the size of selection-error window <should be bigger
+%according to predefined position> One pixels larger than that maybe...
+errorwindow=windowsize+1;
+
+%Psfmatrix is used to store these psfs size: 
+%               2*windowsize+1,2*windowsize+1,figurenumber
+psfmatrix=zeros(2*windowsize+1,2*windowsize+1,70);
+%posx and posy are approximate positions of psf along 
+%x and y directions
+posx=zeros(1,totalfign);
+posy=zeros(1,totalfign);
+
+%1. Obtain psfs... (exception delete and wash data)
+%Store current folder file name here
+homefolder=pwd;
+for i=1:totalfign
+    %We use cd and pwd commands here to get current position and wash psf
+    cd(curfolder); 
+    %Read fits file into memory
+    orgimg=fitsread(fitsfiles(i).name);
+    %Go back to the homefolder and get some results.
+    cd(homefolder);
+    %Wash PSF and Get results
+    [psfmatrix(:,:,i),posx(i),posy(i)]=GetPsf(orgimg,round(pos(2,i)),...
+        round(pos(1,i)),errorwindow,windowsize);
+end
+
+%2. After the above step all the psfs will be restored here and these psfs are
+%normalized and corrected....
+% All the abnormal psfs are set to zero along with their positions'
+% information :: here we calculate the base psf with the effective psfs.
+[psfbas,relativeweight]=psfpcadecon(psfmatrix);
+
+%3. We use LS method to get the final position of each debries
+
+%finalposx and finalposy are final position of each debri in x and y dir.
+finalposx=zeros(1,totalfign);
+finalposy=zeros(1,totalfign);
+
+%The psfmatrix that are used to calculate position of each components ::
+%they are a little smaller than all the components in psfmatrix (2 pixels)
+repsfmat=psfmatrix(2:end-1,2:end-1,:);
+
+%Begin calculation of all the debries from the catalog
+%Errorbound is a self-defined variable that are used to estimate how well
+%the estimation algorithm is
+Errorbound=0.1;
+%Errorf for restore the residual error
+errorf=zeros(1,totalfign);
+for i=1:totalfign
+    %We use DFP (Davidon Fletcher Powell) method to esitmate the optimal
+    %position of these aims.
+    if (posx(i)==0)
+        %Some psf laied on error position will be ignored
+        finalposx(i)=0;
+        finalposy(i)=0;
+    else
+        %DFP to get these postions
+        [finalposx(i), finalposy(i), errorf(i)]=DFPposition(psfmatrix(:,:,i),psfbas,Errorbound);
+    %Check whether we find the right position vector
+    if finalposx(i)==0 && finalposy(i)==0
+        finalposx(i)=0;
+        finalposy(i)=0;
+    else
+        finalposx(i)=posx(i)+finalposx(i);
+        finalposy(i)=posy(i)+finalposy(i);
+    end
+    end
+end
+
+%4. We restore these position here
+destr='C:\Users\jiapeng\Documents\MATLAB\PCAForAstrometry\PCALSmethod\20120315_7803_105984_2.txt';
+fid = fopen(destr,'wt');
+% Write the position of these aims
+for i=1:totalfign
+pos=fprintf(fid,'%f %f\n',[finalposx(i),finalposy(i)]);
+end
+fclose(fid);
+
+
+
+% plot(finalposx(finalposx>100)-posx(finalposx>100))
+% figure;plot(finalposy(finalposy>100)-posy(finalposy>100))
+% figure;plot(finalposy(errorf<0.03)-posy(errorf<0.03),'*')
+% figure;plot(finalposx(errorf<0.03)-posx(errorf<0.03),'*')
+
+
+
