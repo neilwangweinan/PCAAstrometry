@@ -34,7 +34,7 @@ psfmatrix=reshape(psfmatrix,psfa*psfb,psfc);
 %PCA analysis of psf matrix
 [basU,relativeweight,~]=svd(psfmatrix);
 relativeweight=diag(relativeweight)/max(max(diag(relativeweight)));
-grad=abs(gradient(gradient(relativeweight)));
+grad=abs(diff(diff(relativeweight')));
 grad=grad(grad>10^(-3));
 [c,~]=size(grad);
 psfc=c+1;
